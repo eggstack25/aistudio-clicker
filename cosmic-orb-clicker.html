@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Orb Clicker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        .float-animation { animation: float 3s ease-in-out infinite; }
+        .orb-glow { box-shadow: 0 0 50px rgba(139, 92, 246, 0.5); }
+        .orb-glow:active { transform: scale(0.95); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        @keyframes floatUp {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -150%) scale(1.5); opacity: 0; }
+        }
+        .floating-text {
+            animation: floatUp 1s forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 overflow-hidden">
+    <div id="root"></div>
+
+    <script type="module">
+        // Constants
+        const UPGRADES = [
+            {
+                id: 'stardust_extractor',
+                name: 'Stardust Extractor',
+                description: 'Increases orbs gained per click.',
+                baseCost: 15,
+                costMultiplier: 1.15,
+                power: 1,
+                type: 'click',
+                icon: 'fa-hand-sparkles'
+            },
+            {
+                id: 'lunar_drone',
+                name: 'Lunar Drone',
+                description: 'Automates orb collection over time.',
+                baseCost: 100,
+                costMultiplier: 1.2,
+                power: 2,
+                type: 'passive',
+                icon: 'fa-robot'
+            },
+            {
+                id: 'nebula_pump',
+                name: 'Nebula Pump',
+                description: 'Pulls orbs from deep space.',
+                baseCost: 1100,
+                costMultiplier: 1.25,
+                power: 12,
+                type: 'passive',
+                icon: 'fa-vortex'
+            },
+            {
+                id: 'galactic_forge',
+                name: 'Galactic Forge',
+                description: 'Highly efficient orb manufacturing.',
+                baseCost: 12000,
+                costMultiplier: 1.3,
+                power: 55,
+                type: 'passive',
+                icon: 'fa-fire'
+            },
+            {
+                id: 'void_siphon',
+                name: 'Void Siphon',
+                description: 'Sucks energy from the abyss.',
+                baseCost: 130000,
+                costMultiplier: 1.4,
+                power: 210,
+                type: 'passive',
+                icon: 'fa-ghost'
+            }
+        ];
+
+        const BUFF_DURATION_MS = 30000; // 30 seconds
+
+        // Game State
+        const state = {
+            orbs: 0,
+            totalOrbsGenerated: 0,
+            clicks: 0,
+            ownedUpgrades: {},
+            activeBuff: null
+        };
+
+        let floatingTexts = [];
+        let nextFloatingId = 0;
+
+        // Gemini Service (mock implementation since we can't use API keys in standalone HTML)
+        async function getCosmicInsight() {
+            // Mock implementation - returns random insights
+            const loreOptions = [
+                "The stars whisper secrets only the patient can hear.",
+                "Ancient cosmic energies surge through the void.",
+                "The universe bends to your will, traveler.",
+                "Celestial forces align in your favor.",
+                "The nebula's heart beats with newfound power.",
+                "Reality warps as you tap into primordial energy.",
+                "The void echoes with ancient power.",
+                "Stellar winds carry whispers of forgotten might.",
+                "Time dilates as cosmic forces converge.",
+                "The fabric of space trembles with anticipation."
+            ];
+
+            const buffNames = [
+                "Stellar Resonance",
+                "Void Amplification",
+                "Cosmic Surge",
+                "Nebula's Blessing",
+                "Astral Fury",
+                "Galactic Pulse",
+                "Quantum Leap",
+                "Solar Flare",
+                "Meteor Storm",
+                "Black Hole Gravity"
+            ];
+
+            const lore = loreOptions[Math.floor(Math.random() * loreOptions.length)];
+            const buffName = buffNames[Math.floor(Math.random() * buffNames.length)];
+            const multiplier = 1.5 + Math.random() * 3.5; // 1.5 to 5.0
+
+            // Simulate API delay
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            return { lore, buffName, multiplier };
+        }
+
+        // Game Functions
+        function calculatePassiveIncome() {
+            return UPGRADES.reduce((acc, upgrade) => {
+                if (upgrade.type === 'passive') {
+                    const count = state.ownedUpgrades[upgrade.id] || 0;
+                    return acc + (upgrade.power * count);
+                }
+                return acc;
+            }, 0);
+        }
+
+        function calculateClickPower() {
+            const basePower = 1;
+            const upgradePower = UPGRADES.reduce((acc, upgrade) => {
+                if (upgrade.type === 'click') {
+                    const count = state.ownedUpgrades[upgrade.id] || 0;
+                    return acc + (upgrade.power * count);
+                }
+                return acc;
+            }, 0);
+
+            const multiplier = state.activeBuff?.multiplier || 1;
+            return (basePower + upgradePower) * multiplier;
+        }
+
+        function getUpgradeCost(upgrade) {
+            const count = state.ownedUpgrades[upgrade.id] || 0;
+            return Math.floor(upgrade.baseCost * Math.pow(upgrade.costMultiplier, count));
+        }
+
+        function buyUpgrade(upgradeId) {
+            const upgrade = UPGRADES.find(u => u.id === upgradeId);
+            const count = state.ownedUpgrades[upgradeId] || 0;
+            const cost = Math.floor(upgrade.baseCost * Math.pow(upgrade.costMultiplier, count));
+
+            if (state.orbs >= cost) {
+                state.orbs -= cost;
+                state.ownedUpgrades[upgradeId] = count + 1;
+                render();
+            }
+        }
+
+        async function fetchInsight() {
+            const button = document.getElementById('insight-button');
+            if (!button || button.disabled) return;
+
+            button.disabled = true;
+            button.innerHTML = `
+                <i class="fas fa-wand-magic-sparkles text-violet-500 animate-spin"></i>
+                <span class="font-bold uppercase tracking-widest text-sm">Channelling the Stars...</span>
+            `;
+
+            const insight = await getCosmicInsight();
+            
+            state.activeBuff = {
+                name: insight.buffName,
+                multiplier: insight.multiplier,
+                expiry: Date.now() + BUFF_DURATION_MS,
+                description: insight.lore
+            };
+
+            render();
+        }
+
+        function handleOrbClick(e) {
+            const power = calculateClickPower();
+            const x = e.clientX;
+            const y = e.clientY;
+
+            state.orbs += power;
+            state.totalOrbsGenerated += power;
+            state.clicks += 1;
+
+            // Add floating text
+            const id = nextFloatingId++;
+            floatingTexts.push({ id, x, y, value: power.toFixed(1) });
+
+            // Create floating text element
+            const floatingEl = document.createElement('div');
+            floatingEl.className = 'absolute pointer-events-none text-violet-300 font-bold text-xl floating-text z-50';
+            floatingEl.style.left = x + 'px';
+            floatingEl.style.top = y + 'px';
+            floatingEl.style.transform = 'translate(-50%, -50%)';
+            floatingEl.textContent = '+' + power.toFixed(1);
+            document.body.appendChild(floatingEl);
+
+            setTimeout(() => {
+                floatingEl.remove();
+                floatingTexts = floatingTexts.filter(ft => ft.id !== id);
+            }, 1000);
+
+            render();
+        }
+
+        // Main game loop
+        setInterval(() => {
+            const income = calculatePassiveIncome();
+            if (income > 0) {
+                state.orbs += income / 10;
+                state.totalOrbsGenerated += income / 10;
+            }
+
+            // Check buff expiry
+            if (state.activeBuff && Date.now() > state.activeBuff.expiry) {
+                state.activeBuff = null;
+            }
+
+            render();
+        }, 100);
+
+        // Render function
+        function render() {
+            const passiveIncomeTotal = calculatePassiveIncome();
+            const clickPower = calculateClickPower();
+
+            const root = document.getElementById('root');
+            root.innerHTML = `
+                <div class="h-screen w-screen flex flex-col md:flex-row bg-slate-950 overflow-hidden select-none">
+                    <!-- LEFT: Game Content -->
+                    <div class="flex-1 flex flex-col items-center justify-center p-8 relative overflow-hidden">
+                        <!-- Background Aura -->
+                        <div class="absolute inset-0 bg-gradient-to-tr from-violet-900/20 to-transparent pointer-events-none"></div>
+                        
+                        <!-- Stats Header -->
+                        <div class="text-center mb-8 z-10">
+                            <h1 class="text-5xl font-black text-white tracking-tighter mb-2 flex items-center justify-center gap-3">
+                                <i class="fas fa-certificate text-violet-500 animate-pulse"></i>
+                                ${Math.floor(state.orbs).toLocaleString()}
+                            </h1>
+                            <p class="text-slate-400 font-medium">
+                                <span class="text-violet-400">Total Generated:</span> ${Math.floor(state.totalOrbsGenerated).toLocaleString()}
+                            </p>
+                            <div class="mt-4 flex gap-4 justify-center">
+                                <div class="bg-slate-900/80 px-4 py-2 rounded-full border border-slate-800 backdrop-blur">
+                                    <span class="text-xs text-slate-500 uppercase font-bold mr-2">Auto Income</span>
+                                    <span class="text-emerald-400 font-mono">+${passiveIncomeTotal.toFixed(1)}/s</span>
+                                </div>
+                                <div class="bg-slate-900/80 px-4 py-2 rounded-full border border-slate-800 backdrop-blur">
+                                    <span class="text-xs text-slate-500 uppercase font-bold mr-2">Click Power</span>
+                                    <span class="text-violet-400 font-mono">x${clickPower.toFixed(1)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Main Click Orb -->
+                        <button
+                            id="orb-button"
+                            class="relative w-64 h-64 md:w-80 md:h-80 rounded-full bg-gradient-to-br from-violet-600 via-indigo-700 to-fuchsia-800 flex items-center justify-center float-animation orb-glow transition-transform hover:scale-105 active:scale-95 group z-20"
+                        >
+                            <div class="absolute inset-2 rounded-full bg-slate-950/20 backdrop-blur-sm border-4 border-white/20 group-hover:border-white/40 transition-colors"></div>
+                            <i class="fas fa-meteor text-7xl md:text-9xl text-white/80 group-hover:text-white transition-all drop-shadow-lg"></i>
+                        </button>
+
+                        <!-- AI Buff Section -->
+                        <div class="mt-12 z-10 max-w-md w-full">
+                            ${state.activeBuff ? `
+                                <div class="bg-violet-900/40 border border-violet-500/50 p-4 rounded-xl backdrop-blur-lg animate-pulse">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="font-bold text-violet-200 uppercase text-sm tracking-widest">${state.activeBuff.name}</span>
+                                        <span class="text-xs font-mono text-violet-300">
+                                            ${Math.max(0, Math.ceil((state.activeBuff.expiry - Date.now()) / 1000))}s left
+                                        </span>
+                                    </div>
+                                    <p class="text-violet-100 text-sm italic">"${state.activeBuff.description}"</p>
+                                    <div class="mt-2 text-xs text-violet-300 font-bold">Multiplier: x${state.activeBuff.multiplier.toFixed(2)}</div>
+                                </div>
+                            ` : `
+                                <button
+                                    id="insight-button"
+                                    class="w-full py-4 px-6 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl transition-all flex items-center justify-center gap-3 group"
+                                >
+                                    <i class="fas fa-wand-magic-sparkles text-violet-500 group-hover:rotate-12"></i>
+                                    <span class="font-bold uppercase tracking-widest text-sm">Seek Cosmic Insight</span>
+                                </button>
+                            `}
+                        </div>
+                    </div>
+
+                    <!-- RIGHT: Shop Sidebar -->
+                    <div class="w-full md:w-96 bg-slate-900/50 border-l border-slate-800 backdrop-blur-xl flex flex-col">
+                        <div class="p-6 border-b border-slate-800 bg-slate-900/80">
+                            <h2 class="text-xl font-black text-white uppercase tracking-widest flex items-center gap-2">
+                                <i class="fas fa-shopping-cart text-violet-500"></i>
+                                Galactic Emporium
+                            </h2>
+                        </div>
+                        
+                        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+                            ${UPGRADES.map(upgrade => {
+                                const cost = getUpgradeCost(upgrade);
+                                const count = state.ownedUpgrades[upgrade.id] || 0;
+                                const canAfford = state.orbs >= cost;
+                                const progressPercent = Math.min(100, (state.orbs / cost) * 100);
+
+                                return `
+                                    <button
+                                        data-upgrade-id="${upgrade.id}"
+                                        class="upgrade-button w-full p-4 rounded-xl border flex items-center gap-4 transition-all text-left group relative overflow-hidden ${
+                                            canAfford 
+                                            ? 'bg-slate-800/50 border-slate-700 hover:border-violet-500/50 hover:bg-slate-800' 
+                                            : 'bg-slate-900/50 border-slate-800 opacity-60 cursor-not-allowed'
+                                        }"
+                                        ${!canAfford ? 'disabled' : ''}
+                                    >
+                                        <!-- Progress Indicator -->
+                                        <div 
+                                            class="absolute bottom-0 left-0 h-1 bg-violet-600 transition-all duration-300"
+                                            style="width: ${progressPercent}%"
+                                        ></div>
+
+                                        <div class="w-12 h-12 rounded-lg flex items-center justify-center text-xl transition-colors ${canAfford ? 'bg-violet-900/50 text-violet-400' : 'bg-slate-800 text-slate-500'}">
+                                            <i class="fas ${upgrade.icon}"></i>
+                                        </div>
+
+                                        <div class="flex-1">
+                                            <div class="flex justify-between items-center mb-1">
+                                                <span class="font-bold text-slate-100">${upgrade.name}</span>
+                                                <span class="text-xs bg-slate-950 px-2 py-0.5 rounded text-slate-400 font-bold">${count}</span>
+                                            </div>
+                                            <p class="text-xs text-slate-500 leading-tight mb-2">${upgrade.description}</p>
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-sm font-black flex items-center gap-1 ${canAfford ? 'text-emerald-400' : 'text-rose-500'}">
+                                                    <i class="fas fa-certificate text-[10px]"></i>
+                                                    ${cost.toLocaleString()}
+                                                </span>
+                                                <span class="text-[10px] text-slate-400 uppercase font-bold tracking-tighter">
+                                                    +${upgrade.power}${upgrade.type === 'click' ? '/clk' : '/sec'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </button>
+                                `;
+                            }).join('')}
+                        </div>
+
+                        <!-- Footer Stats -->
+                        <div class="p-4 bg-slate-950 border-t border-slate-800 flex justify-between items-center text-[10px] uppercase font-bold text-slate-500 tracking-widest">
+                            <span>Session Clicks: ${state.clicks}</span>
+                            <span class="text-violet-500">v1.0.0-cosmic</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Attach event listeners
+            const orbButton = document.getElementById('orb-button');
+            if (orbButton) {
+                orbButton.addEventListener('click', handleOrbClick);
+            }
+
+            const insightButton = document.getElementById('insight-button');
+            if (insightButton) {
+                insightButton.addEventListener('click', fetchInsight);
+            }
+
+            const upgradeButtons = document.querySelectorAll('.upgrade-button');
+            upgradeButtons.forEach(button => {
+                const upgradeId = button.getAttribute('data-upgrade-id');
+                button.addEventListener('click', () => buyUpgrade(upgradeId));
+            });
+        }
+
+        // Initial render
+        render();
+    </script>
+</body>
+</html>
